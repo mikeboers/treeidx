@@ -15,14 +15,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--verbose', action='count', default=0)
 parser.add_argument('-r', '--root')
 parser.add_argument('index')
-parser.add_argument('path')
+parser.add_argument('path_to_scan')
 args = parser.parse_args()
 
 
 verbose = args.verbose
 
-root = os.path.abspath(args.root or args.path)
-if not (args.path + '/').startswith(root + '/'):
+logical_root = os.path.abspath(os.path.expanduser(args.root or args.path_to_scan))
+root = os.path.abspath(os.path.expanduser(args.path_to_scan))
+
+if not (root + '/').startswith(logical_root + '/'):
     print 'Path must be within root.'
     exit()
 
@@ -34,7 +36,7 @@ con = index.connect()
 cur = con.execute('INSERT INTO scans (started_at, hostname, root) VALUES (?, ?, ?)', [
     datetime.datetime.utcnow(),
     socket.gethostname(),
-    root
+    logical_root
 ])
 scan_id = cur.lastrowid
 
@@ -42,13 +44,13 @@ con.execute('BEGIN')
 last_time = time()
 
 
-for dir_path, dir_names, file_names in os.walk(args.path):
+for dir_path, dir_names, file_names in os.walk(root):
 
 
     # TODO: Remove dir_names from the list if they are on a different device.
 
     if verbose:
-        print ' ', os.path.relpath(dir_path, root) + '/'
+        print ' ', os.path.relpath(dir_path, logical_root) + '/'
 
     for file_name in file_names:
 
@@ -69,7 +71,7 @@ for dir_path, dir_names, file_names in os.walk(args.path):
         if stat.st_dev != root_dev:
             continue
 
-        rel_path = os.path.relpath(path, root)
+        rel_path = os.path.relpath(path, logical_root)
 
         # Look for an existing file.
         row = con.execute('SELECT id, size, mtime, ctime FROM files WHERE path = ? LIMIT 1', [rel_path]).fetchone()
