@@ -13,13 +13,18 @@ from treeidx.checksum import checksum_file
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--verbose', action='count', default=0)
+parser.add_argument('-r', '--root')
 parser.add_argument('index')
-parser.add_argument('root')
+parser.add_argument('path')
 args = parser.parse_args()
 
 
 verbose = args.verbose
-root = os.path.abspath(args.root)
+
+root = os.path.abspath(args.root or args.path)
+if not (args.path + '/').startswith(root + '/'):
+    print 'Path must be within root.'
+    exit()
 
 
 index = Index(args.index)
@@ -37,13 +42,13 @@ con.execute('BEGIN')
 last_time = time()
 
 
-for dir_path, dir_names, file_names in os.walk(root):
+for dir_path, dir_names, file_names in os.walk(args.path):
 
 
     # TODO: Remove dir_names from the list if they are on a different device.
 
     if verbose:
-        print ' ', dir_path[len(root) + 1:] + '/'
+        print ' ', os.path.relpath(dir_path, root) + '/'
 
     for file_name in file_names:
 
@@ -64,7 +69,7 @@ for dir_path, dir_names, file_names in os.walk(root):
         if stat.st_dev != root_dev:
             continue
 
-        rel_path = path[len(root) + 1:]
+        rel_path = os.path.relpath(path, root)
 
         # Look for an existing file.
         row = con.execute('SELECT id, size, mtime, ctime FROM files WHERE path = ? LIMIT 1', [rel_path]).fetchone()
@@ -87,7 +92,7 @@ for dir_path, dir_names, file_names in os.walk(root):
 
         # Commit periodically.
         this_time = time()
-        if time_time - last_time > 1:
+        if this_time - last_time > 1:
             con.execute('COMMIT')
             con.execute('BEGIN')
             last_time = this_time
