@@ -1,0 +1,6 @@
+
+First entrypoint:
+    python -m treeidx idx.db
+
+    This walks the cwd, updating the index.
+
