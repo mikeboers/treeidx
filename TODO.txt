@@ -1,4 +1,4 @@
 - interruptable os.walk, so that we can store where the scan was, and pick it back up without rescanning from scratch
 - include/exclude/filter like rsync
 - print out stats at the end, like rsync
-
+- flag things as deleted, instead of actually deleting them

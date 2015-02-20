@@ -44,13 +44,34 @@ con.execute('BEGIN')
 last_time = time()
 
 
+files_total = 0
+bytes_total = 0
+files_read = 0
+bytes_read = 0
+
+
 for dir_path, dir_names, file_names in os.walk(root):
 
 
     # TODO: Remove dir_names from the list if they are on a different device.
+    # TODO: Remove directories in the database that no longer exist.
 
-    if verbose:
-        print ' ', os.path.relpath(dir_path, logical_root) + '/'
+    rel_dir_path = os.path.relpath(dir_path, logical_root)
+    if verbose >= 2:
+        print ' ', rel_dir_path + '/'
+
+    # Get or create the directory.
+    row = con.execute('SELECT id FROM directories WHERE path = ?', [rel_dir_path]).fetchone()
+    if row:
+        dir_id = row[0]
+    else:
+        cur = con.execute('INSERT OR IGNORE INTO directories (path) VALUES (?)', [rel_dir_path])
+        dir_id = cur.lastrowid
+
+    # Grab the existing files.
+    existing_by_name = {}
+    for row in con.execute('SELECT * FROM files WHERE dir_id = ?', [dir_id]):
+        existing_by_name[row['name']] = row
 
     for file_name in file_names:
 
@@ -59,6 +80,8 @@ for dir_path, dir_names, file_names in os.walk(root):
             stat = os.lstat(path) # Does NOT follow symlinks.
         except OSError as e:
             if e.errno == errno.ENOENT:
+                # The file vanished...
+                # TODO: report this somehow.
                 continue
             else:
                 raise
@@ -71,26 +94,39 @@ for dir_path, dir_names, file_names in os.walk(root):
         if stat.st_dev != root_dev:
             continue
 
+        files_total += 1
+        bytes_total += stat.st_size
+
         rel_path = os.path.relpath(path, logical_root)
 
-        # Look for an existing file.
-        row = con.execute('SELECT id, size, mtime, ctime FROM files WHERE path = ? LIMIT 1', [rel_path]).fetchone()
-        if row:
-            if row[1] == stat.st_size and row[2] == stat.st_mtime and row[3] == stat.st_ctime:
-                if verbose >= 2:
-                    print ' ', rel_path
-                continue
-            else:
-                con.execute('DELETE FROM files WHERE id = ?', [row[0]])
+        # Skip this file if it already exists, and does not appear to have
+        # changed (warranting a new checksum).
+        existing = existing_by_name.pop(file_name, None)
+        if existing and (
+            existing['size'] == stat.st_size and
+            existing['mtime'] == stat.st_mtime and
+            existing['ctime'] == stat.st_ctime
+        ):
+            if verbose >= 3:
+                print ' ', rel_path
+            continue
 
-        if verbose:
+        files_read += 1
+        bytes_read += stat.st_size
+
+        if verbose >= 1:
             print '+', rel_path
 
         checksum = checksum_file(path)
 
-        con.execute('INSERT INTO files (scan_id, path, size, mtime, ctime, checksum) VALUES (?, ?, ?, ?, ?, ?)',
-                    [scan_id, rel_path, stat.st_size, stat.st_mtime, stat.st_ctime, buffer(checksum)]
-        )
+        con.execute('''
+            INSERT OR REPLACE INTO files
+            (dir_id, scan_id, name, size, mtime, ctime, checksum)
+            VALUES
+            (?, ?, ?, ?, ?, ?, ?)
+        ''', [
+            dir_id, scan_id, file_name, stat.st_size, stat.st_mtime, stat.st_ctime, buffer(checksum)
+        ])
 
         # Commit periodically.
         this_time = time()
@@ -99,6 +135,20 @@ for dir_path, dir_names, file_names in os.walk(root):
             con.execute('BEGIN')
             last_time = this_time
 
+    for existing in existing_by_name.itervalues():
+        rel_path = os.path.join(rel_dir_path, existing['name'])
+        if verbose >= 1:
+            print '-', rel_path
+    if existing_by_name:
+        con.execute(
+            'DELETE FROM files WHERE dir_id = ? AND name IN (%s)' %
+            ', '.join('?' * len(existing_by_name)), [dir_id] + existing_by_name.keys()
+        )
+
 
 con.execute('COMMIT')
+
+
+print bytes_read, 'bytes read from', files_read, 'files'
+print bytes_total, 'bytes total from', files_total, 'files'
 

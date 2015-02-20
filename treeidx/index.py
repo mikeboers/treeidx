@@ -15,14 +15,19 @@ def _create_initial_tables(con):
         hostname TEXT NOT NULL,
         root TEXT NOT NULL
     )''')
-    con.execute('''CREATE TABLE files (
+    con.execute('''CREATE TABLE directories (
         id INTEGER PRIMARY KEY,
+        path TEXT UNIQUE NOT NULL
+    )''')
+    con.execute('''CREATE TABLE files (
         scan_id INTEGER REFERENCES scans(id) NOT NULL,
-        path TEXT NOT NULL,
+        dir_id INTEGER REFERENCES directories(id) NOT NULL,
+        name TEXT NOT NULL,
         size INT NOT NULL,
         mtime INT NOT NULL,
         ctime INT NOT NULL,
-        checksum BLOB NOT NULL
+        checksum BLOB NOT NULL,
+        CONSTRAINT dir_and_name PRIMARY KEY (dir_id, name)
     )''')
 
 def _migrate(con):
@@ -44,7 +49,9 @@ def _migrate(con):
 
 class _Connection(sqlite3.Connection):
     
-    row_factory = sqlite3.Row
+    def __init__(self, *args, **kwargs):
+        super(_Connection, self).__init__(*args, **kwargs)
+        self.row_factory = sqlite3.Row
 
     def cursor(self):
         return super(_Connection, self).cursor(_Cursor)
