@@ -13,9 +13,9 @@ from treeidx.checksum import checksum_file
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--verbose', action='count', default=0)
-parser.add_argument('-r', '--root')
-parser.add_argument('index')
-parser.add_argument('path_to_scan')
+parser.add_argument('-r', '--root', type=unicode)
+parser.add_argument('index', type=unicode)
+parser.add_argument('path_to_scan', type=unicode)
 args = parser.parse_args()
 
 

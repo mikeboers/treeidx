@@ -1,6 +1,4 @@
-
-First entrypoint:
-    python -m treeidx idx.db
-
-    This walks the cwd, updating the index.
+- interruptable os.walk, so that we can store where the scan was, and pick it back up without rescanning from scratch
+- include/exclude/filter like rsync
+- print out stats at the end, like rsync
 
